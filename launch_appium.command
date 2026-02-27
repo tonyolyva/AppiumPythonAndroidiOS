@@ -1,3 +1,3 @@
 #!/bin/bash
-cd /Users/Yutaka/Workspace/AppiumPythonProject
+cd /Users/Yutaka/Workspace/AppiumPythonAndroidiOS
 appium

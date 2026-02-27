@@ -11,7 +11,7 @@ else
 
   cat > "$appium_script_path" <<EOF
 #!/bin/bash
-cd /Users/Yutaka/Workspace/AppiumPythonProject
+cd /Users/Yutaka/Workspace/AppiumPythonAndroidiOS
 /usr/local/bin/appium
 EOF
 
