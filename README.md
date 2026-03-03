@@ -42,8 +42,8 @@ AppiumPythonAndroidiOS is a test framework for Android Calculator and iOS Calcul
 ## Testing
 The project includes unit tests and UI tests to ensure code quality and functionality.
 
-* **Unit Tests:** Located in the `AppiumPythonAndroidiOSTests` group. These tests verify the core calculator logic and calculations.
-* **UI Tests:** Located in the `AppiumPythonAndroidiOSUITests` group. These tests verify the user interface's behavior and interactions.
+* **to test iOS app (Symulator):** pytest -q --platform ios -m ios 
+* **to test Android app (Physical device - Pixel):** pytest -q --platform android -m android
 
 ## Contributing
 Contributions are welcome! If you find any issues or have suggestions for improvements, please feel free to open an issue or submit a pull request.

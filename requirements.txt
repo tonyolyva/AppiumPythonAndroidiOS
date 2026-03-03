@@ -1,9 +1,9 @@
+appium-python-client==5.2.6
 pytest
 pytest-html
 pytest-json-report
-appium-python-client==3.1.1
-scikit-learn
-pandas
-matplotlib
-jupyter
-shap
+# scikit-learn
+# pandas
+# matplotlib
+# jupyter
+# shap

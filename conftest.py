@@ -1,184 +1,227 @@
+import glob
+from pathlib import Path
+import os
+import subprocess
+import time
+import socket
 import pytest
 from appium import webdriver
 from appium.options.common import AppiumOptions
-import os
-import datetime
-import pytest_html
-import base64
 
-# Global variable to hold the driver instance (optional, but needed for the hook)
-_driver_instance = None
 
-# --- Fixture to provide capabilities for different platforms ---
-# This fixture will be parameterized to yield different capability dictionaries.
-# IMPORTANT: scope changed to "function"
-@pytest.fixture(scope="function", params=[ # Changed scope to "function"
-    # iOS Capabilities
-    {
-        "platform": "iOS",
-        "app_path": "/Users/Yutaka/Library/Developer/Xcode/DerivedData/CalculMath-ezshmfewvjwlhqbluhlcdjdmhfvc/Build/Products/Debug-iphonesimulator/CalculMath.app",
-        "deviceName": "iPhone 16 Pro Max",
-        "platformVersion": "18.1",
-        "appPackage": "com.example.CalculMath", # Optional: for consistency, can be set to bundle ID or app name
-        "appActivity": "com.example.CalculMath.MainActivity" # Optional: for consistency
-    },
-    # Android Capabilities (Example - adjust appPackage/appActivity as needed)
-    {
-        "platform": "Android",
-        "deviceName": "Pixel 3", # Example Android device name
-        "platformVersion": "12",    # Example Android platform version
-        "appPackage": "com.google.android.calculator",
-        "appActivity": "com.android.calculator2.Calculator",
-        "noReset": True
-    }
-], ids=["iOS_CalculMath", "Android_Calculator"]) # Add 'ids' for clearer test names
-def appium_capabilities(request):
+def _is_port_open(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1)
+        return sock.connect_ex((host, port)) == 0
+
+
+from urllib.parse import urlparse
+import shutil
+
+@pytest.fixture(scope="session", autouse=True)
+def appium_server(appium_url):
     """
-    Provides Appium capabilities dictionaries for different platforms.
+    Start Appium automatically for the test session if it's not already running.
     """
-    return request.param
+    parsed = urlparse(appium_url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 4723
 
-# --- Fixture for Appium driver setup and teardown ---
-# This fixture depends on 'appium_capabilities' to get the necessary parameters.
-@pytest.fixture(scope="function")
-def driver_setup(request, appium_capabilities): # <-- Now depends on 'appium_capabilities'
-    global _driver_instance
+    if _is_port_open(host, port):
+        print(f"Appium already running on {host}:{port}")
+        yield
+        return
 
-    capabilities = appium_capabilities # Get the capabilities dictionary from the 'appium_capabilities' fixture
-    
-    platform = capabilities.get("platform")
-    app_path = capabilities.get("app_path") # Specific for iOS
-    
-    appium_options = AppiumOptions()
+    appium_bin = shutil.which("appium")
+    if not appium_bin:
+        pytest.fail("Could not find 'appium' in PATH (but your `which appium` suggests it should be).")
 
-    if platform == "Android":
-        print(f"\n--- Setting up Android driver for {capabilities.get('deviceName')} on {capabilities.get('platformVersion')} ---")
-        appium_options.load_capabilities({
-            "platformName": capabilities.get("platform"),
-            "appium:deviceName": capabilities.get("deviceName"),
-            "appium:platformVersion": capabilities.get("platformVersion"),
-            "appium:automationName": "UiAutomator2",
-            "appium:appPackage": capabilities.get("appPackage"),
-            "appium:appActivity": capabilities.get("appActivity"),
-            "appium:noReset": capabilities.get("noReset", False) # <--- CHANGE THIS LINE
-            # The .get("noReset", False) ensures it defaults to False if not explicitly in capabilities,
-            # but it will correctly pick up True if present.
-        })
-    elif platform == "iOS":
-        # ... (rest of your iOS setup remains the same)
-        print(f"\n--- Setting up iOS driver for {capabilities.get('deviceName')} on {capabilities.get('platformVersion')} ---")
-        # Check if the app path exists before proceeding
-        if not app_path or not os.path.exists(app_path):
-            pytest.fail(f"CalculMath.app not found at {app_path}. Please update app_path in conftest.py or ensure the app exists at this location.")
+    log_path = Path("appium_server.log")
+    log_file = log_path.open("w")
 
-        appium_options.load_capabilities({
-            "platformName": capabilities.get("platform"),
-            "appium:deviceName": capabilities.get("deviceName"),
-            "appium:platformVersion": capabilities.get("platformVersion"),
-            "appium:automationName": "XCUITest",
-            "appium:app": app_path,
-            "appium:noReset": False # Reset app state for each test
-        })
+    cmd = [
+        appium_bin,
+        "--address", host,
+        "--port", str(port),
+        "--base-path", "/wd/hub",
+        "--relaxed-security",
+        "--allow-insecure", "shutdown_other_sims,shutdown_simulator",
+    ]
+
+    print(f"Starting Appium: {' '.join(cmd)}")
+    process = subprocess.Popen(
+        cmd,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    # Wait up to 30s for port to open OR Appium to exit
+    for _ in range(30):
+        if _is_port_open(host, port):
+            print(f"Appium is up on {host}:{port}")
+            break
+        if process.poll() is not None:
+            log_file.close()
+            pytest.fail(
+                f"Appium exited immediately (exit code {process.returncode}). "
+                f"See {log_path.resolve()} for details."
+            )
+        time.sleep(1)
     else:
-        pytest.fail("Unsupported platform: " + platform)
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+        log_file.close()
+        pytest.fail(f"Appium did not start (port never opened). See {log_path.resolve()}")
 
-    appium_server_url = 'http://localhost:4723'
+    yield
 
+    print("Stopping Appium server...")
+    process.terminate()
     try:
-        _driver_instance = webdriver.Remote(appium_server_url, options=appium_options)
-        print("Successfully connected to Appium driver!")
-    except Exception as e:
-        print(f"Failed to connect to Appium driver: {e}")
-        pytest.fail(f"Could not connect to Appium driver: {e}")
-
-    yield _driver_instance # Provide the driver to the test function
-
-    # Teardown: Quit the driver after each test function completes
-    print("Tearing down Appium driver...")
-    if _driver_instance:
-        print("Quitting Appium driver session...")
-        try:
-            # --- ADD THIS LINE TO EXPLICITLY CLOSE THE APP ---
-            _driver_instance.terminate_app(appium_capabilities.get("appPackage"))
-            print(f"Terminated app: {appium_capabilities.get('appPackage')}")
-
-            _driver_instance.quit()
-            print("Session closed.")
-        except Exception as e:
-            print(f"Error during driver quit or app termination: {e}")
-        _driver_instance = None
-
-# Pytest hook to add screenshot to HTML report on test failure
-@pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    outcome = yield
-    report = outcome.get_result()
-    # print(f"\n--- Inside pytest_runtest_makereport for {report.nodeid}, when: {report.when} ---")
-
-    driver = _driver_instance # Use the global driver instance
-    # if driver:
-    #     print(f"Driver in hook: {driver}")
-
-    # print(f"Report outcome: {report.outcome}, Report when: {report.when}")
-
-    # Only take screenshot if the test *failed* during the 'call' phase
-    if report.when == 'call' and report.failed and driver: 
-        print("Condition met for screenshot: report.when is 'call' and test is failed.")
-        
-        screenshot_dir = os.path.join("reports", "screenshots")
-        os.makedirs(screenshot_dir, exist_ok=True)
-
-        # Sanitize nodeid for filename, replace invalid characters
-        sanitized_nodeid = report.nodeid.replace(':', '_').replace('/', '_').replace('[', '_').replace(']', '').replace('.', '_')
-        screenshot_filename = f"{sanitized_nodeid}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png"
-        
-        full_screenshot_path = os.path.join(screenshot_dir, screenshot_filename) # Absolute path to save file
-
-        try:
-            driver.save_screenshot(full_screenshot_path)
-            print(f"Screenshot saved to: {full_screenshot_path}")
-
-            with open(full_screenshot_path, "rb") as f:
-                image_data = base64.b64encode(f.read()).decode("utf-8")
-            
-            report.extras.append(pytest_html.extras.image(
-                f"data:image/png;base64,{image_data}", 
-                name=f"Screenshot on Failure: {report.nodeid}",
-                mime_type='image/png'
-            ))
-            print("Screenshot data embedded into report.extra using pytest_html.extras.image.")
-        except Exception as e:
-            print(f"Failed to take screenshot or add to report: {e}")
-    # else:
-        # print(f"Screenshot condition NOT met: report.when={report.when}, report.failed={report.failed}, driver_present={bool(driver)}")
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+    log_file.close()
 
 
-# Pytest hook for adding custom CSS to the HTML report
-def pytest_html_results_summary(prefix, summary, postfix):
-    prefix.extend([
-        pytest_html.extras.html(
-            '<style>'
-            '  img.extra-image {'
-            '    max-width: 100% !important;'
-            '    height: auto !important;'
-            '    display: block !important;'
-            '    margin: 0 auto !important;'
-            '    border: 1px solid #ddd;'
-            '  }'
-            '  details.extra-details {'
-            '    width: 100%;'
-            '    overflow-x: auto;'
-            '    box-sizing: border-box;'
-            '    margin-bottom: 10px;'
-            '  }'
-            '  .pytest-html-details-block {'
-            '    max-width: 100%;'
-            '    overflow-x: auto;'
-            '  }'
-            '  .pytest-html-container, .container-fluid {'
-            '    max-width: 100% !important;'
-            '    overflow-x: auto !important;'
-            '  }'
-            '</style>'
+def _find_ios_app_path(app_name: str = "CalculMath.app") -> str | None:
+    """
+    Try to locate a built Simulator .app in Xcode DerivedData.
+    Looks for: */Build/Products/Debug-iphonesimulator/<app_name>
+    """
+    pattern = os.path.expanduser(
+        f"~/Library/Developer/Xcode/DerivedData/**/Build/Products/Debug-iphonesimulator/{app_name}"
+    )
+    matches = glob.glob(pattern, recursive=True)
+
+    # Prefer newest build if multiple exist
+    if not matches:
+        return None
+    matches.sort(key=lambda p: Path(p).stat().st_mtime, reverse=True)
+    return matches[0]
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--platform",
+        action="store",
+        default=os.getenv("PLATFORM", "ios"),
+        choices=["ios", "android"],
+        help="Target platform: ios or android (can also be set via PLATFORM env var).",
+    )
+    parser.addoption(
+        "--appium-url",
+        action="store",
+        default=os.getenv("APPIUM_URL", "http://127.0.0.1:4723/wd/hub"),
+        help="Appium server URL (can also be set via APPIUM_URL env var).",
+    )
+
+
+@pytest.fixture(scope="session")
+def platform(request) -> str:
+    return request.config.getoption("--platform")
+
+
+@pytest.fixture(scope="session")
+def appium_url(request) -> str:
+    url = request.config.getoption("--appium-url")
+    # If user provided just host:port, assume /wd/hub
+    if url.endswith(":4723") or url.endswith(":4723/"):
+        url = url.rstrip("/") + "/wd/hub"
+    return url
+
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        pytest.fail(f"Missing required environment variable: {name}")
+    return value
+
+
+@pytest.fixture(scope="function")
+def driver(platform: str, appium_url: str, appium_server):
+    """Creates an Appium session per test for the requested platform."""
+
+    opts = AppiumOptions()
+    terminate_id: str | None = None
+
+    if platform == "android":
+        # Android: Pixel + Google Calculator
+        app_package = os.getenv("ANDROID_APP_PACKAGE", "com.google.android.calculator")
+        app_activity = os.getenv("ANDROID_APP_ACTIVITY", "com.android.calculator2.Calculator")
+
+        opts.load_capabilities(
+            {
+                "platformName": "Android",
+                "appium:automationName": "UiAutomator2",
+                "appium:deviceName": os.getenv("ANDROID_DEVICE", "Pixel"),
+                # Provide ANDROID_VERSION only if you want to lock it. Otherwise omit.
+                **(
+                    {"appium:platformVersion": os.getenv("ANDROID_VERSION")}
+                    if os.getenv("ANDROID_VERSION")
+                    else {}
+                ),
+                **(
+                    {"appium:udid": os.getenv("ANDROID_UDID")}
+                    if os.getenv("ANDROID_UDID")
+                    else {}
+                ),
+                "appium:appPackage": app_package,
+                "appium:appActivity": app_activity,
+                "appium:noReset": True,
+                "appium:newCommandTimeout": int(os.getenv("APPIUM_NEW_COMMAND_TIMEOUT", "120")),
+            }
         )
-    ])
+        terminate_id = app_package
+
+    else:
+        app_path = os.getenv("IOS_APP_PATH") or _find_ios_app_path("CalculMath.app")
+        if not app_path or not os.path.exists(app_path):
+            pytest.fail(
+                "Set IOS_APP_PATH or build CalculMath for Simulator so it exists in DerivedData at "
+                "Build/Products/Debug-iphonesimulator/CalculMath.app. "
+                f"Got: {app_path}"
+            )
+
+        bundle_id = os.getenv("IOS_BUNDLE_ID", "com.example.CalculMath")
+
+        caps = {
+            "platformName": "iOS",
+            "appium:automationName": "XCUITest",
+            "appium:deviceName": os.getenv("IOS_DEVICE", "iPhone 14 Pro"),
+            "appium:app": app_path,
+            "appium:noReset": False,
+            "appium:newCommandTimeout": int(os.getenv("APPIUM_NEW_COMMAND_TIMEOUT", "120")),
+        }
+
+        if os.getenv("IOS_SHUTDOWN_SIMULATOR") == "1":
+            caps["appium:shutdownOtherSimulators"] = True
+            caps["appium:shutdownSimulator"] = True
+
+        if os.getenv("IOS_VERSION"):
+            caps["appium:platformVersion"] = os.getenv("IOS_VERSION")
+        if os.getenv("IOS_UDID"):
+            caps["appium:udid"] = os.getenv("IOS_UDID")
+
+        opts.load_capabilities(caps)
+        terminate_id = bundle_id
+
+
+    drv = webdriver.Remote(appium_url, options=opts)
+    try:
+        yield drv
+    finally:
+        # terminate_app expects Android package or iOS bundle id
+        if terminate_id:
+            try:
+                drv.terminate_app(terminate_id)
+            except Exception:
+                pass
+        try:
+            drv.quit()
+        except Exception:
+            pass
