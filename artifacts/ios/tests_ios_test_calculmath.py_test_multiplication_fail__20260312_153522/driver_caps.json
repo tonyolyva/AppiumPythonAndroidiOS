@@ -1,0 +1,18 @@
+{
+  "app": "/Users/yutaka/Library/Developer/Xcode/DerivedData/CalculMath-ajuslxyfbnympmfqcbhejeekkbjy/Build/Products/Debug-iphonesimulator/CalculMath.app",
+  "automationName": "XCUITest",
+  "browserName": "",
+  "databaseEnabled": false,
+  "deviceName": "iPhone 14 Pro",
+  "javascriptEnabled": true,
+  "locationContextEnabled": false,
+  "networkConnectionEnabled": false,
+  "newCommandTimeout": 120,
+  "noReset": false,
+  "platform": "MAC",
+  "platformName": "iOS",
+  "platformVersion": "26.2",
+  "takesScreenshot": true,
+  "udid": "073B9A99-601A-4938-8428-7FEBB7D0FDCE",
+  "webStorageEnabled": false
+}

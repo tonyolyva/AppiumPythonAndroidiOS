@@ -2,6 +2,7 @@ appium-python-client==5.2.6
 pytest
 pytest-html
 pytest-json-report
+pytest-playwright
 # scikit-learn
 # pandas
 # matplotlib

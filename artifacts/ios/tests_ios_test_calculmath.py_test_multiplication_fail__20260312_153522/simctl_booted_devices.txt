@@ -1,0 +1,15 @@
+== Devices ==
+-- iOS 26.0 --
+-- iOS 26.1 --
+-- iOS 26.1 --
+-- iOS 26.2 --
+    appiumTest-5E56E975-E611-4C4A-A0EF-41FA11ADD4CB-iPhone 14 Pro (073B9A99-601A-4938-8428-7FEBB7D0FDCE) (Booted) 
+-- tvOS 26.0 --
+-- tvOS 26.1 --
+-- tvOS 26.2 --
+-- watchOS 26.0 --
+-- watchOS 26.1 --
+-- watchOS 26.2 --
+-- visionOS 26.0 --
+-- visionOS 26.1 --
+-- visionOS 26.2 --

@@ -1,5 +1,5 @@
 # AppiumPythonAndroidiOS - A Feature-Rich Web Calculator
-AppiumPythonAndroidiOS is a test framework for Android Calculator and iOS CalculMath. 
+AppiumPythonAndroidiOS is a test framework for Android Calculator and iOS CalculMath, based on Appium, Python, and Pytest.  
 
 ## Calc Features
 * **Basic Arithmetic Operations:** Addition, subtraction, multiplication, and division.
@@ -43,7 +43,12 @@ AppiumPythonAndroidiOS is a test framework for Android Calculator and iOS Calcul
 The project includes unit tests and UI tests to ensure code quality and functionality.
 
 * **to test iOS app (Symulator):** pytest -q --platform ios -m ios 
+
 * **to test Android app (Physical device - Pixel):** pytest -q --platform android -m android
+
+* **to test Web app (local Web version of CalculMath):** 
+* **In the 1st tab of Terminal:** CalculMath % python -m http.server 8000
+* **In the 2nd tab of Terminal:** pytest -q -m web --platform web
 
 ## Contributing
 Contributions are welcome! If you find any issues or have suggestions for improvements, please feel free to open an issue or submit a pull request.
